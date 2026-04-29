@@ -162,8 +162,34 @@ export const AGENT_DEFS = [
     ],
     // Prompt delivered via stdin (`codex exec -`) to avoid Windows
     // `spawn ENAMETOOLONG` while keeping Codex on its structured JSON stream.
+    //
+    // `--full-auto` keeps Codex in `workspace-write` sandbox mode, which is
+    // the right fs posture (no writes outside cwd) but **denies all
+    // outbound network by default — including loopback 127.0.0.1**.
+    // That breaks our media pipeline: the agent shells out
+    // `node "$OD_BIN" media generate …`, the CLI tries to POST to the
+    // local daemon at 127.0.0.1:<port>, the connect is refused by the
+    // sandbox, and undici surfaces a generic `fetch failed` that's easy
+    // to mistake for "the daemon is dead". The daemon is fine — it's
+    // codex's sandbox refusing to let the agent dial loopback.
+    //
+    // The targeted fix is a `-c` config override that opens network
+    // access *while keeping the workspace-write fs sandbox*. Codex maps
+    // `sandbox_workspace_write.network_access = true` in config.toml /
+    // `-c key=value` to `SandboxPolicy::WorkspaceWrite { network_access:
+    // true }`. That allows the loopback dial (and any direct provider
+    // calls the agent might make for diagnostics) without giving up the
+    // fs guardrails. For users who want zero sandbox they can still flip
+    // to `--sandbox danger-full-access` via their own codex config.
     buildArgs: (_prompt, _imagePaths, _extra, options = {}, runtimeContext = {}) => {
-      const args = ['exec', '--json', '--skip-git-repo-check', '--full-auto'];
+      const args = [
+        'exec',
+        '--json',
+        '--skip-git-repo-check',
+        '--full-auto',
+        '-c',
+        'sandbox_workspace_write.network_access=true',
+      ];
       if (runtimeContext.cwd) {
         args.push('-C', runtimeContext.cwd);
       }

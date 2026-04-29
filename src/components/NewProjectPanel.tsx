@@ -133,8 +133,8 @@ export function NewProjectPanel({
   const [videoModel, setVideoModel] = useState<string>(DEFAULT_VIDEO_MODEL);
   const [videoLength, setVideoLength] = useState<number>(5);
   const [videoAspect, setVideoAspect] = useState<MediaAspect>('16:9');
-  const [audioKind, setAudioKind] = useState<AudioKind>('music');
-  const [audioModel, setAudioModel] = useState<string>(DEFAULT_AUDIO_MODEL.music);
+  const [audioKind, setAudioKind] = useState<AudioKind>('speech');
+  const [audioModel, setAudioModel] = useState<string>(DEFAULT_AUDIO_MODEL.speech);
   const [audioDuration, setAudioDuration] = useState<number>(30);
   const [voice, setVoice] = useState('');
 
@@ -851,18 +851,25 @@ function AspectPicker({
     <div className="newproj-section">
       <label className="newproj-label">{t('newproj.aspectLabel')}</label>
       <div className="aspect-grid">
-        {options.map((a) => (
-          <button
-            key={a}
-            type="button"
-            className={`aspect-card${value === a ? ' active' : ''}`}
-            onClick={() => onChange(a)}
-            aria-pressed={value === a}
-          >
-            <span className={`aspect-thumb aspect-thumb-${a.replace(':', 'x')}`} aria-hidden />
-            <span className="aspect-label">{t(labelKeyFor[a])}</span>
-          </button>
-        ))}
+        {options.map((a) => {
+          const rawLabel = t(labelKeyFor[a]);
+          const [title, ratio = a] = rawLabel.split('·').map((part) => part.trim());
+          return (
+            <button
+              key={a}
+              type="button"
+              className={`aspect-card${value === a ? ' active' : ''}`}
+              onClick={() => onChange(a)}
+              aria-pressed={value === a}
+            >
+              <span className={`aspect-thumb aspect-thumb-${a.replace(':', 'x')}`} aria-hidden />
+              <span className="aspect-label">
+                <span className="aspect-label-title">{title}</span>
+                <span className="aspect-label-ratio">{ratio}</span>
+              </span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );

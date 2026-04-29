@@ -355,8 +355,8 @@ function metadataForSkill(skill: SkillSummary): ProjectMetadata {
   if (kind === 'audio') {
     return {
       kind,
-      audioKind: 'music',
-      audioModel: 'suno-v5',
+      audioKind: 'speech',
+      audioModel: 'minimax-tts',
       audioDuration: 30,
     };
   }

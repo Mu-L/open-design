@@ -232,6 +232,16 @@ export async function generateMedia(args) {
       bytes = result.bytes;
       providerNote = result.providerNote;
       suggestedExt = result.suggestedExt;
+    } else if (def.provider === 'minimax' && surface === 'audio') {
+      const result = await renderMinimaxTTS(ctx, credentials);
+      bytes = result.bytes;
+      providerNote = result.providerNote;
+      suggestedExt = result.suggestedExt;
+    } else if (def.provider === 'fishaudio' && surface === 'audio') {
+      const result = await renderFishAudioTTS(ctx, credentials);
+      bytes = result.bytes;
+      providerNote = result.providerNote;
+      suggestedExt = result.suggestedExt;
     } else {
       // No real renderer wired up for this (provider, surface). Gate the
       // stub fallback behind OD_MEDIA_ALLOW_STUBS so release builds don't
@@ -655,6 +665,180 @@ async function renderVolcengineImage(ctx, credentials) {
     bytes,
     providerNote: `volcengine/${ctx.model} · ${ctx.aspect} · ${bytes.length} bytes`,
     suggestedExt: '.png',
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Provider: MiniMax — Speech-02 family text-to-speech (synchronous).
+//
+// Docs: https://platform.minimaxi.com — POST /t2a_v2 with a JSON body
+// describing the voice + audio settings. Response is JSON with the
+// audio bytes hex-encoded under `data.audio`. The MiniMax catalogue we
+// surface as the generic id `minimax-tts` resolves to `speech-02-turbo`
+// (their fast tier). Voice id defaults to a neutral Mandarin voice but
+// the agent can override via the model registry's `voice` slot.
+// ---------------------------------------------------------------------------
+
+const MINIMAX_DEFAULT_BASE_URL = 'https://api.minimaxi.chat/v1';
+
+// Map our generic catalogue ids onto MiniMax's actual model ids. The
+// `minimax-tts` slot in src/media/models.ts is shorthand for "their
+// fast TTS tier"; we substitute the real model name on the wire so
+// MiniMax accepts the request without exposing the user to their
+// internal naming.
+const MINIMAX_TTS_MODEL_MAP = {
+  'minimax-tts': 'speech-02-turbo',
+};
+
+async function renderMinimaxTTS(ctx, credentials) {
+  if (!credentials.apiKey) {
+    throw new Error(
+      'no MiniMax API key — configure it in Settings or set OD_MINIMAX_API_KEY',
+    );
+  }
+  const baseUrl = (credentials.baseUrl || MINIMAX_DEFAULT_BASE_URL).replace(
+    /\/$/,
+    '',
+  );
+  const wireModel = MINIMAX_TTS_MODEL_MAP[ctx.model] || ctx.model;
+  const text = (ctx.prompt && ctx.prompt.trim()) || 'This is a test.';
+  // Voice id picks: the agent can pass --voice to choose, otherwise we
+  // default to a neutral Mandarin male voice that handles both Chinese
+  // and English text reasonably. MiniMax's voice catalogue is large
+  // (`male-qn-qingse`, `female-shaonv`, etc.) — listed at
+  // platform.minimaxi.com under voice management.
+  const voiceId = (ctx.voice && ctx.voice.trim()) || 'male-qn-qingse';
+
+  const body = {
+    model: wireModel,
+    text,
+    stream: false,
+    voice_setting: {
+      voice_id: voiceId,
+      speed: 1.0,
+      vol: 1.0,
+      pitch: 0,
+    },
+    audio_setting: {
+      sample_rate: 32000,
+      format: 'mp3',
+    },
+  };
+
+  const resp = await fetch(`${baseUrl}/t2a_v2`, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${credentials.apiKey}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  const respText = await resp.text();
+  if (!resp.ok) {
+    throw new Error(`minimax tts ${resp.status}: ${truncate(respText, 240)}`);
+  }
+  let data;
+  try {
+    data = JSON.parse(respText);
+  } catch {
+    throw new Error(`minimax tts non-JSON: ${truncate(respText, 200)}`);
+  }
+  // MiniMax wraps every response in `base_resp`; even an HTTP 200 can
+  // be a logical failure (`status_code !== 0`). Surface that distinct
+  // class of error so the user knows it's an auth / params issue, not
+  // a network blip.
+  if (data?.base_resp && data.base_resp.status_code !== 0) {
+    throw new Error(
+      `minimax tts api error ${data.base_resp.status_code}: ${data.base_resp.status_msg || 'unknown'}`,
+    );
+  }
+  const hex = data?.data?.audio;
+  if (typeof hex !== 'string' || !hex) {
+    throw new Error('minimax tts response missing data.audio');
+  }
+  const bytes = Buffer.from(hex, 'hex');
+  if (bytes.length === 0) {
+    throw new Error('minimax tts decoded zero bytes');
+  }
+  // Pull a few useful descriptors from extra_info for the providerNote
+  // so the FileViewer toolbar tells the truth about what was generated.
+  const xi = data?.extra_info || {};
+  const seconds = xi.audio_length ? Math.round(xi.audio_length / 100) / 10 : '?';
+
+  return {
+    bytes,
+    providerNote: `minimax/${wireModel} · ${voiceId} · ${seconds}s · ${bytes.length} bytes`,
+    suggestedExt: '.mp3',
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Provider: FishAudio — Speech-1.x family text-to-speech (synchronous).
+//
+// Docs: https://docs.fish.audio — POST /v1/tts with a JSON body.
+// FishAudio returns the audio bytes directly (Content-Type: audio/mpeg
+// for mp3, audio/wav for wav) rather than wrapping them in JSON, so we
+// stream the body straight into a Buffer. The catalogue id we expose
+// as `fish-speech-2` resolves to `speech-1.6` (their newer model) on
+// the wire; older builds can paste `speech-1.5` via the model picker
+// once arbitrary model ids are accepted.
+// ---------------------------------------------------------------------------
+
+const FISHAUDIO_DEFAULT_BASE_URL = 'https://api.fish.audio';
+
+const FISHAUDIO_TTS_MODEL_MAP = {
+  'fish-speech-2': 'speech-1.6',
+};
+
+async function renderFishAudioTTS(ctx, credentials) {
+  if (!credentials.apiKey) {
+    throw new Error(
+      'no FishAudio API key — configure it in Settings or set OD_FISHAUDIO_API_KEY',
+    );
+  }
+  const baseUrl = (credentials.baseUrl || FISHAUDIO_DEFAULT_BASE_URL).replace(
+    /\/$/,
+    '',
+  );
+  const wireModel = FISHAUDIO_TTS_MODEL_MAP[ctx.model] || ctx.model;
+  const text = (ctx.prompt && ctx.prompt.trim()) || 'This is a test.';
+
+  // FishAudio's `reference_id` slot pins which voice the synth uses.
+  // The agent passes it via --voice (carried in ctx.voice). Empty means
+  // FishAudio falls back to its default voice for the chosen model.
+  const body = {
+    text,
+    format: 'mp3',
+    mp3_bitrate: 128,
+    model: wireModel,
+    normalize: true,
+    latency: 'normal',
+  };
+  if (ctx.voice && ctx.voice.trim()) {
+    body.reference_id = ctx.voice.trim();
+  }
+
+  const resp = await fetch(`${baseUrl}/v1/tts`, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${credentials.apiKey}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`fishaudio tts ${resp.status}: ${truncate(errText, 240)}`);
+  }
+  const arr = await resp.arrayBuffer();
+  const bytes = Buffer.from(arr);
+  if (bytes.length === 0) {
+    throw new Error('fishaudio tts returned zero bytes');
+  }
+  return {
+    bytes,
+    providerNote: `fishaudio/${wireModel} · ${bytes.length} bytes`,
+    suggestedExt: '.mp3',
   };
 }
 

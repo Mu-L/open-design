@@ -15,6 +15,34 @@ const argv = process.argv.slice(2);
 // working unchanged. Subcommand routing is keyword-based; flags are
 // parsed inside each handler.
 
+// Flags accepted by `od media generate`. Whitelisted so a hallucinated
+// `--lenght 5` from the LLM fails fast instead of silently no-op'ing
+// while we route a bogus body to the daemon.
+//
+// Hoisted to the top of the module *before* the subcommand dispatch
+// below: top-level `await SUBCOMMAND_MAP[first](rest)` runs runMedia
+// synchronously during module evaluation, and runMedia references these
+// `const` Sets — leaving them at the bottom of the file would hit the
+// TDZ ("Cannot access 'MEDIA_GENERATE_STRING_FLAGS' before
+// initialization") and crash every `od media …` invocation.
+const MEDIA_GENERATE_STRING_FLAGS = new Set([
+  'project',
+  'surface',
+  'model',
+  'prompt',
+  'output',
+  'aspect',
+  'length',
+  'duration',
+  'voice',
+  'audio-kind',
+  'daemon-url',
+]);
+const MEDIA_GENERATE_BOOLEAN_FLAGS = new Set([
+  'help',
+  'h',
+]);
+
 const SUBCOMMAND_MAP = {
   media: runMedia,
 };
@@ -142,7 +170,34 @@ async function runMedia(args) {
       body: JSON.stringify(body),
     });
   } catch (err) {
-    console.error(`failed to reach daemon at ${daemonUrl}: ${err.message}`);
+    // undici's top-level message for connect failures is the unhelpful
+    // `fetch failed` — the actual reason lives on `err.cause`. Drill into
+    // it so the agent (and any human reading the log) sees the real
+    // condition: `ECONNREFUSED` if the port is dead, `EPERM` /
+    // `ENETUNREACH` if a sandbox blocked the dial (typical when running
+    // under Codex `workspace-write` without `network_access=true`),
+    // `ENOTFOUND` for DNS, etc.
+    const cause = err && typeof err === 'object' ? err.cause : null;
+    const code =
+      cause && typeof cause === 'object' && typeof cause.code === 'string'
+        ? cause.code
+        : null;
+    const causeMsg =
+      cause && typeof cause === 'object' && typeof cause.message === 'string'
+        ? cause.message
+        : '';
+    let detail = err && err.message ? err.message : String(err);
+    if (code) detail = `${code}${causeMsg ? ` — ${causeMsg}` : ''}`;
+    else if (causeMsg) detail = causeMsg;
+    console.error(`failed to reach daemon at ${daemonUrl}: ${detail}`);
+    if (code === 'EPERM' || code === 'ENETUNREACH') {
+      console.error(
+        'hint: outbound connect was denied by a sandbox. If you launched ' +
+          'this command from a code agent, check the agent\'s sandbox / ' +
+          'network policy. The OD daemon itself is unaffected — it can be ' +
+          'reached from a regular shell.',
+      );
+    }
     process.exit(3);
   }
   const text = await resp.text();
@@ -180,27 +235,6 @@ async function runMedia(args) {
     process.exit(5);
   }
 }
-
-// Flags accepted by `od media generate`. Whitelisted so a hallucinated
-// `--lenght 5` from the LLM fails fast instead of silently no-op'ing
-// while we route a bogus body to the daemon.
-const MEDIA_GENERATE_STRING_FLAGS = new Set([
-  'project',
-  'surface',
-  'model',
-  'prompt',
-  'output',
-  'aspect',
-  'length',
-  'duration',
-  'voice',
-  'audio-kind',
-  'daemon-url',
-]);
-const MEDIA_GENERATE_BOOLEAN_FLAGS = new Set([
-  'help',
-  'h',
-]);
 
 // Tolerant of two shapes the LLM might emit:
 //   --flag value     (space-separated)

@@ -16,11 +16,11 @@ export const MEDIA_PROVIDERS = [
   { id: 'google', label: 'Google AI / Vertex', hint: 'Imagen 4 / Veo 3 / Lyria', integrated: false },
   { id: 'kling', label: 'Kuaishou Kling', hint: 'Kling 1.6 / 2.0 video', integrated: false },
   { id: 'midjourney', label: 'Midjourney (proxy)', hint: 'midjourney-v7', integrated: false },
-  { id: 'minimax', label: 'MiniMax', hint: 'TTS / video-01', integrated: false },
+  { id: 'minimax', label: 'MiniMax', hint: 'TTS / video-01', integrated: true, defaultBaseUrl: 'https://api.minimaxi.chat/v1' },
   { id: 'suno', label: 'Suno', hint: 'Music generation', integrated: false },
   { id: 'udio', label: 'Udio', hint: 'Music generation', integrated: false },
   { id: 'elevenlabs', label: 'ElevenLabs', hint: 'Voice / SFX', integrated: false },
-  { id: 'fishaudio', label: 'FishAudio', hint: 'Speech / voice clone', integrated: false },
+  { id: 'fishaudio', label: 'FishAudio', hint: 'Speech / voice clone', integrated: true, defaultBaseUrl: 'https://api.fish.audio' },
   { id: 'stub', label: 'Stub (placeholder)', hint: 'Deterministic local placeholder bytes', integrated: true },
 ];
 

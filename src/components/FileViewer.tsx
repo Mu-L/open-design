@@ -798,6 +798,66 @@ function VideoViewer({
   const t = useT();
   // Bust the browser cache when the agent regenerates the file in place.
   const url = `${projectFileUrl(projectId, file.name)}?v=${Math.round(file.mtime)}`;
+  const [posterUrl, setPosterUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setPosterUrl(null);
+
+    const probe = document.createElement('video');
+    probe.preload = 'auto';
+    probe.muted = true;
+    probe.playsInline = true;
+    probe.crossOrigin = 'anonymous';
+    probe.src = url;
+
+    const capture = () => {
+      if (cancelled || probe.videoWidth <= 0 || probe.videoHeight <= 0) return;
+      const canvas = document.createElement('canvas');
+      canvas.width = probe.videoWidth;
+      canvas.height = probe.videoHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.drawImage(probe, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.86);
+      if (!cancelled) {
+        setPosterUrl(dataUrl);
+      }
+    };
+
+    const tryCapture = () => {
+      if (probe.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+        capture();
+      }
+    };
+
+    const handleLoadedData = () => {
+      tryCapture();
+      if (probe.duration && Number.isFinite(probe.duration) && probe.duration > 0.05) {
+        try {
+          probe.currentTime = 0.05;
+        } catch {
+          // Some browsers disallow seeking this early; the frame at t=0
+          // is still better than a black panel.
+        }
+      }
+    };
+
+    probe.addEventListener('loadeddata', handleLoadedData);
+    probe.addEventListener('seeked', tryCapture);
+    probe.addEventListener('canplay', tryCapture);
+    probe.load();
+
+    return () => {
+      cancelled = true;
+      probe.removeEventListener('loadeddata', handleLoadedData);
+      probe.removeEventListener('seeked', tryCapture);
+      probe.removeEventListener('canplay', tryCapture);
+      probe.removeAttribute('src');
+      probe.load();
+    };
+  }, [url]);
+
   return (
     <div className="viewer video-viewer">
       <div className="viewer-toolbar">
@@ -825,7 +885,13 @@ function VideoViewer({
         </div>
       </div>
       <div className="viewer-body video-body">
-        <video src={url} controls preload="metadata" />
+        <video
+          src={url}
+          controls
+          preload="metadata"
+          playsInline
+          poster={posterUrl ?? undefined}
+        />
       </div>
     </div>
   );

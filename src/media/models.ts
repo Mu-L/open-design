@@ -128,7 +128,8 @@ export const MEDIA_PROVIDERS: MediaProvider[] = [
     id: 'minimax',
     label: 'MiniMax',
     hint: 'TTS / video-01',
-    integrated: false,
+    integrated: true,
+    defaultBaseUrl: 'https://api.minimaxi.chat/v1',
     docsUrl: 'https://platform.minimaxi.com',
   },
   {
@@ -154,7 +155,8 @@ export const MEDIA_PROVIDERS: MediaProvider[] = [
     id: 'fishaudio',
     label: 'FishAudio',
     hint: 'Speech / voice clone',
-    integrated: false,
+    integrated: true,
+    defaultBaseUrl: 'https://api.fish.audio',
     docsUrl: 'https://fish.audio',
   },
   {
