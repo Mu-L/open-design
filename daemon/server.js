@@ -874,7 +874,8 @@ export async function startServer({ port = 7456, returnServer = false } = {}) {
       const cfg = await writeConfig(PROJECT_ROOT, req.body);
       res.json(cfg);
     } catch (err) {
-      res.status(400).json({ error: String(err && err.message ? err.message : err) });
+      const status = typeof err?.status === 'number' ? err.status : 400;
+      res.status(status).json({ error: String(err && err.message ? err.message : err) });
     }
   });
 

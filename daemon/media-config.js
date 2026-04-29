@@ -131,6 +131,7 @@ export async function readMaskedConfig(projectRoot) {
  */
 export async function writeConfig(projectRoot, body) {
   const incoming = body && typeof body === 'object' ? body.providers || {} : {};
+  const force = Boolean(body && typeof body === 'object' && body.force === true);
   const next = {};
   for (const id of PROVIDER_IDS) {
     const entry = incoming[id];
@@ -152,6 +153,13 @@ export async function writeConfig(projectRoot, body) {
       (id) => prior[id] && (prior[id].apiKey || prior[id].baseUrl),
     );
     if (priorIds.length > 0) {
+      if (!force) {
+        const err = new Error(
+          `refusing to wipe ${priorIds.length} configured provider(s) without force=true: ${priorIds.join(', ')}`,
+        );
+        err.status = 409;
+        throw err;
+      }
       try {
         console.error(
           `[media-config] WARN: incoming PUT empty, would wipe ${priorIds.length} configured provider(s): ${priorIds.join(', ')}`,

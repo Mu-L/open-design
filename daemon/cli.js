@@ -152,6 +152,9 @@ async function runMedia(args) {
   const body = {
     surface,
     model: flags.model,
+    // Prompts remain opaque text all the way through the daemon and must
+    // never be shell-interpolated by downstream providers. Every current
+    // renderer uses fetch + JSON bodies, not exec/spawn.
     prompt: flags.prompt,
     output: flags.output,
     aspect: flags.aspect,
@@ -217,6 +220,12 @@ async function runMedia(args) {
     parsed = null;
   }
   const file = parsed && parsed.file;
+  const warnings = file && Array.isArray(file.warnings) ? file.warnings : [];
+  for (const warning of warnings) {
+    if (typeof warning === 'string' && warning) {
+      console.error(`WARN: ${warning}`);
+    }
+  }
   if (file && file.providerError) {
     const provider = file.providerId || 'provider';
     console.error(

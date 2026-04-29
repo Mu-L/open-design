@@ -66,7 +66,7 @@ const AUDIO_KINDS = new Set(['music', 'speech', 'sfx']);
 class StubProviderDisabledError extends Error {
   constructor(model) {
     super(
-      `provider not configured: ${model}. Set OD_MEDIA_ALLOW_STUBS=1 to write a placeholder file.`,
+      `provider not configured: ${model}. Add your API key in Settings -> Media Providers to enable real generation.`,
     );
     this.name = 'StubProviderDisabledError';
     this.code = 'STUB_PROVIDER_DISABLED';
@@ -95,6 +95,22 @@ function clampNumber(value, allowed) {
     }
   }
   return best;
+}
+
+function clampWithWarning(value, allowed, flagName) {
+  const clamped = clampNumber(value, allowed);
+  if (
+    typeof value === 'number'
+    && Number.isFinite(value)
+    && typeof clamped === 'number'
+    && clamped !== value
+  ) {
+    return {
+      value: clamped,
+      warning: `--${flagName} ${value} clamped to ${clamped} (allowed: ${allowed.join(', ')})`,
+    };
+  }
+  return { value: clamped, warning: null };
 }
 
 /**
@@ -173,12 +189,17 @@ export async function generateMedia(args) {
   // Clamp registry-bound numeric inputs to their allowed buckets so a
   // hallucinated --length 9999999 doesn't reach a real provider as-is
   // when stubs are swapped for paid integrations.
-  const clampedLength =
-    surface === 'video' ? clampNumber(length, VIDEO_LENGTHS_SEC) : undefined;
-  const clampedDuration =
+  const lengthClamp =
+    surface === 'video'
+      ? clampWithWarning(length, VIDEO_LENGTHS_SEC, 'length')
+      : { value: undefined, warning: null };
+  const durationClamp =
     surface === 'audio'
-      ? clampNumber(duration, AUDIO_DURATIONS_SEC)
-      : undefined;
+      ? clampWithWarning(duration, AUDIO_DURATIONS_SEC, 'duration')
+      : { value: undefined, warning: null };
+  const clampedLength = lengthClamp.value;
+  const clampedDuration = durationClamp.value;
+  const warnings = [lengthClamp.warning, durationClamp.warning].filter(Boolean);
 
   const dir = await ensureProject(projectsRoot, projectId);
   const safeOut = sanitizeName(
@@ -320,6 +341,7 @@ export async function generateMedia(args) {
     providerError,
     usedStubFallback,
     intentionalStub,
+    warnings,
   };
 }
 

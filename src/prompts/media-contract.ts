@@ -88,6 +88,10 @@ node "$OD_BIN" media generate \\
   [--voice <voice-id>]              # audio:speech only
 \`\`\`
 
+Always quote the prompt value. Use \`--prompt "<full prompt>"\` (or the
+equivalent safe quoting for your shell) — never splice an unquoted user
+string into the command line.
+
 The command prints a single line of JSON describing the written file:
 
 \`\`\`json

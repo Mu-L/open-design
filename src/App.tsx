@@ -139,7 +139,7 @@ export function App() {
     setConfig(withOnboarding);
     // Push media provider credentials to the daemon. Fire-and-forget;
     // a failure here just means the daemon will fall back to env-vars.
-    void syncMediaProvidersToDaemon(withOnboarding.mediaProviders);
+    void syncMediaProvidersToDaemon(withOnboarding.mediaProviders, { force: true });
     setSettingsOpen(false);
   }, []);
 

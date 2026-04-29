@@ -3003,7 +3003,8 @@ code {
   position: relative;
 }
 .df-preview-thumb iframe,
-.df-preview-thumb img {
+.df-preview-thumb img,
+.df-preview-thumb video {
   width: 100%; height: 100%; border: none; background: white; object-fit: cover; display: block;
 }
 .df-preview-meta {

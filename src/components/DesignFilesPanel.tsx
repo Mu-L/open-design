@@ -297,6 +297,14 @@ function DfPreview({
       <div className="df-preview-thumb">
         {file.kind === 'image' || file.kind === 'sketch' ? (
           <img src={`${url}?v=${Math.round(file.mtime)}`} alt={file.name} />
+        ) : file.kind === 'video' ? (
+          <video
+            src={`${url}?v=${Math.round(file.mtime)}`}
+            muted
+            playsInline
+            preload="metadata"
+            controls
+          />
         ) : file.kind === 'html' ? (
           <iframe title={file.name} src={url} sandbox="allow-scripts" />
         ) : (

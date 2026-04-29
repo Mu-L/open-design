@@ -62,13 +62,14 @@ export function hasAnyConfiguredProvider(
  */
 export async function syncMediaProvidersToDaemon(
   providers: Record<string, MediaProviderCredentials> | undefined,
+  options?: { force?: boolean },
 ): Promise<void> {
   if (!providers) return;
   try {
     await fetch('/api/media/config', {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ providers }),
+      body: JSON.stringify({ providers, force: Boolean(options?.force) }),
     });
   } catch {
     // Daemon offline — frontend keeps the localStorage copy; user can
