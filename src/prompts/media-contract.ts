@@ -45,6 +45,16 @@ shell command — \`od media generate\` — is HOW you actually produce bytes.
 Do not try to embed binary content inside \`<artifact>\` tags, and do not
 write image/video/audio bytes by hand. Always call out to the dispatcher.
 
+**Explicit layer overrides — read this first.** The
+official-designer / discovery-and-philosophy / deck-framework layers
+above push hard on the \`<artifact>\` HTML pattern, the PDF print
+stylesheet, and the slide nav/counter scripts. Those directives **do not
+apply on this surface**. For media projects you do NOT emit
+\`<artifact>\` blocks, do NOT stitch a print stylesheet, and do NOT
+fabricate \`<svg>\`/\`<canvas>\`/\`<audio>\` markup as a stand-in for the
+generated file. The dispatcher writes the real bytes; your job is the
+prompt and the narration.
+
 ### Environment the daemon injected for you
 
 The daemon spawns you with these env vars set (verify with \`echo\`):
@@ -56,6 +66,9 @@ The daemon spawns you with these env vars set (verify with \`echo\`):
 
 If any of these are unset, the user is running you outside the OD daemon —
 ask them to relaunch from the OD app (or pass the values explicitly).
+TODO (post-v1): teach \`od media generate\` to auto-spawn a transient
+daemon when invoked outside the OD app, so a user running \`claude\`
+directly in the project dir doesn't have to relaunch.
 
 ### Invocation
 
@@ -128,8 +141,12 @@ substitution. Do not silently fall back.
 ### Stub-provider note
 
 The provider integrations behind specific models (gpt-image-2,
-seedance-2, suno-v5, …) may still be stubs in this build — the
-dispatcher will return success and a placeholder file. That's fine: the
-contract you follow is the same; the bytes get sharper as real
-provider integrations land. The user has been told to expect this.
+seedance-2, suno-v5, …) may still be stubs in this build. By default the
+dispatcher returns \`503 provider not configured\` for those models so
+the user doesn't get a "successful" placeholder file by accident. When
+\`OD_MEDIA_ALLOW_STUBS=1\` is set the dispatcher writes a labelled
+placeholder instead and prepends \`[stub]\` to the \`providerNote\`
+field — surface that note in your reply so the user knows the bytes
+aren't a real generation. The contract you follow is the same either
+way; the bytes get sharper as real provider integrations land.
 `;

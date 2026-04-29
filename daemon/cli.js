@@ -90,7 +90,17 @@ async function runMedia(args) {
   }
 
   const idx = args.indexOf(sub);
-  const flags = parseFlags([...args.slice(0, idx), ...args.slice(idx + 1)]);
+  let flags;
+  try {
+    flags = parseFlags([...args.slice(0, idx), ...args.slice(idx + 1)], {
+      string: MEDIA_GENERATE_STRING_FLAGS,
+      boolean: MEDIA_GENERATE_BOOLEAN_FLAGS,
+    });
+  } catch (err) {
+    console.error(err.message);
+    printMediaHelp();
+    process.exit(2);
+  }
 
   const daemonUrl = flags['daemon-url'] || process.env.OD_DAEMON_URL || 'http://127.0.0.1:7456';
   const projectId = flags.project || process.env.OD_PROJECT_ID;
@@ -144,12 +154,78 @@ async function runMedia(args) {
   process.stdout.write(text.trim() + '\n');
 }
 
-function parseFlags(argv) {
+// Flags accepted by `od media generate`. Whitelisted so a hallucinated
+// `--lenght 5` from the LLM fails fast instead of silently no-op'ing
+// while we route a bogus body to the daemon.
+const MEDIA_GENERATE_STRING_FLAGS = new Set([
+  'project',
+  'surface',
+  'model',
+  'prompt',
+  'output',
+  'aspect',
+  'length',
+  'duration',
+  'voice',
+  'audio-kind',
+  'daemon-url',
+]);
+const MEDIA_GENERATE_BOOLEAN_FLAGS = new Set([
+  'help',
+  'h',
+]);
+
+// Tolerant of two shapes the LLM might emit:
+//   --flag value     (space-separated)
+//   --flag=value     (equals form, useful when value starts with `--`)
+//
+// `string`/`boolean` whitelists let us tell the difference between a
+// flag whose value happens to begin with `--` (we still consume the next
+// token) and a true bare boolean.
+function parseFlags(argv, opts = {}) {
+  const stringFlags = opts.string instanceof Set ? opts.string : new Set();
+  const booleanFlags = opts.boolean instanceof Set ? opts.boolean : new Set();
+  const knownFlags = new Set([...stringFlags, ...booleanFlags]);
   const out = {};
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (!a || !a.startsWith('--')) continue;
-    const key = a.slice(2);
+    if (!a || !a.startsWith('--')) {
+      // Positional tokens are owned by the caller (subcommand name); the
+      // caller strips them before calling parseFlags, so anything here
+      // is an unknown stray.
+      throw new Error(`unexpected positional argument: ${a}`);
+    }
+    const eq = a.indexOf('=');
+    const key = eq >= 0 ? a.slice(2, eq) : a.slice(2);
+    if (knownFlags.size > 0 && !knownFlags.has(key)) {
+      throw new Error(
+        `unknown flag: --${key}. Run with --help for the list of accepted flags.`,
+      );
+    }
+    if (eq >= 0) {
+      out[key] = a.slice(eq + 1);
+      continue;
+    }
+    if (booleanFlags.has(key)) {
+      out[key] = true;
+      continue;
+    }
+    if (stringFlags.has(key)) {
+      const next = argv[i + 1];
+      if (next == null) {
+        throw new Error(`flag --${key} requires a value`);
+      }
+      // Always consume the next token for a known string flag, even if
+      // it begins with `--` (e.g. `--prompt "--minimal style"` after the
+      // shell has unquoted it). Otherwise a legitimate prompt that
+      // starts with `--` gets dropped and `out.prompt` becomes `true`.
+      out[key] = next;
+      i++;
+      continue;
+    }
+    // Unknown-but-whitelist-mode-off: legacy behavior — assume next
+    // non-flag token is the value, fall back to boolean. Kept so callers
+    // that don't pass whitelists still work.
     const next = argv[i + 1];
     if (next != null && !next.startsWith('--')) {
       out[key] = next;

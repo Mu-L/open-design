@@ -12,13 +12,21 @@
 // entrypoint. Providers are pluggable: each file under ./media-providers/
 // (or inline below) registers handlers keyed by (surface, model). The
 // fallback handlers emit a deterministic, lightweight placeholder
-// (labeled SVG-PNG, silent WAV/MP3, blank MP4) so the framework works
-// without API keys — real provider integrations slot in later by
-// replacing the handler.
+// (labeled SVG-PNG, silent WAV/MP3, blank MP4) so the framework is
+// inspectable for development. They are gated behind the
+// OD_MEDIA_ALLOW_STUBS=1 env var; without it, generateMedia throws a
+// 503-mapped error instead of writing placeholder bytes that look like
+// a "successful" generation. Real provider integrations slot in later
+// by replacing the renderer body.
 
 import { mkdir, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { findMediaModel } from './media-models.js';
+import {
+  AUDIO_DURATIONS_SEC,
+  VIDEO_LENGTHS_SEC,
+  findMediaModel,
+  modelsForSurface,
+} from './media-models.js';
 import {
   ensureProject,
   kindFor,
@@ -33,6 +41,47 @@ const DEFAULT_OUTPUT_BY_SURFACE = {
 };
 
 const SURFACES = new Set(['image', 'video', 'audio']);
+const AUDIO_KINDS = new Set(['music', 'speech', 'sfx']);
+
+// Stubs ship a 1×1 PNG / ~24-byte mp4 / silent WAV / single-frame mp3 so
+// the dispatch path is exercisable before real provider integrations
+// land. On a release build that lands as "successful" but functionally
+// empty bytes — confusing to users. We therefore gate the stub renderers
+// behind OD_MEDIA_ALLOW_STUBS=1 and otherwise return a 503 (mapped from
+// the StubProviderDisabledError thrown below) with a clear message.
+class StubProviderDisabledError extends Error {
+  constructor(model) {
+    super(
+      `provider not configured: ${model}. Set OD_MEDIA_ALLOW_STUBS=1 to write a placeholder file.`,
+    );
+    this.name = 'StubProviderDisabledError';
+    this.code = 'STUB_PROVIDER_DISABLED';
+    this.status = 503;
+  }
+}
+
+function stubsAllowed() {
+  const v = process.env.OD_MEDIA_ALLOW_STUBS;
+  return v === '1' || v === 'true';
+}
+
+function clampNumber(value, allowed) {
+  // Accept exact registry values; otherwise snap to the nearest allowed
+  // bucket so a hallucinated `Number.MAX_SAFE_INTEGER` can't bill an
+  // entire month of credits when real providers plug in.
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
+  if (allowed.includes(value)) return value;
+  let best = allowed[0];
+  let bestDiff = Math.abs(value - allowed[0]);
+  for (const a of allowed) {
+    const d = Math.abs(value - a);
+    if (d < bestDiff) {
+      best = a;
+      bestDiff = d;
+    }
+  }
+  return best;
+}
 
 /**
  * Generate a media artifact and write it into the project's files dir.
@@ -76,16 +125,47 @@ export async function generateMedia(args) {
   if (typeof model !== 'string' || !model) {
     throw new Error('model required');
   }
+  if (surface === 'audio' && audioKind && !AUDIO_KINDS.has(audioKind)) {
+    throw new Error(
+      `unsupported audioKind: ${audioKind}. Allowed: music | speech | sfx.`,
+    );
+  }
   const def = findMediaModel(model);
   if (!def) {
     throw new Error(
       `unknown model: ${model}. Pass --model from the registered list (see /api/media/models).`,
     );
   }
+  // Reject cross-surface combinations (e.g. surface=image + model=seedance-2)
+  // here so the dispatcher never silently routes a video model id through
+  // the image renderer. We compare against the surface-specific list — for
+  // audio we further restrict to the kind-specific bucket so a `music`
+  // surface can't bill an `elevenlabs-v3` (speech) call.
+  const resolvedAudioKind =
+    surface === 'audio' ? audioKind || 'music' : undefined;
+  const allowed = modelsForSurface(surface, resolvedAudioKind);
+  if (!allowed.some((m) => m.id === model)) {
+    const ids = allowed.map((m) => m.id).join(', ');
+    const where =
+      surface === 'audio' ? `audio · ${resolvedAudioKind}` : surface;
+    throw new Error(
+      `model "${model}" is not registered for surface "${where}". Allowed: ${ids}.`,
+    );
+  }
+
+  // Clamp registry-bound numeric inputs to their allowed buckets so a
+  // hallucinated --length 9999999 doesn't reach a real provider as-is
+  // when stubs are swapped for paid integrations.
+  const clampedLength =
+    surface === 'video' ? clampNumber(length, VIDEO_LENGTHS_SEC) : undefined;
+  const clampedDuration =
+    surface === 'audio'
+      ? clampNumber(duration, AUDIO_DURATIONS_SEC)
+      : undefined;
 
   const dir = await ensureProject(projectsRoot, projectId);
   const safeOut = sanitizeName(
-    output || autoOutputName(surface, model, audioKind),
+    output || autoOutputName(surface, model, resolvedAudioKind),
   );
   const target = path.join(dir, safeOut);
   await mkdir(path.dirname(target), { recursive: true });
@@ -95,11 +175,19 @@ export async function generateMedia(args) {
     model,
     prompt: prompt || '',
     aspect: aspect || defaultAspectFor(surface),
-    length: typeof length === 'number' ? length : undefined,
-    duration: typeof duration === 'number' ? duration : undefined,
+    length: clampedLength,
+    duration: clampedDuration,
     voice: voice || '',
-    audioKind: audioKind || (surface === 'audio' ? 'music' : undefined),
+    audioKind: resolvedAudioKind,
   };
+
+  // Real provider integrations slot in here ahead of the stub branch. For
+  // now there are none — guard the stubs behind OD_MEDIA_ALLOW_STUBS so a
+  // user clicking Generate on a release build sees a clear error instead
+  // of a placeholder file landing in the FileViewer.
+  if (!stubsAllowed()) {
+    throw new StubProviderDisabledError(model);
+  }
 
   let bytes;
   let providerNote;
@@ -110,6 +198,10 @@ export async function generateMedia(args) {
   } else {
     ({ bytes, providerNote } = await renderAudio(ctx, safeOut));
   }
+  // The renderers return their own descriptive note. Prepend a `[stub]`
+  // tag so any UI surface (e.g. the FileViewer toolbar) can tell at a
+  // glance that the bytes are placeholder, not a real provider call.
+  providerNote = `[stub] ${providerNote}`;
 
   await writeFile(target, bytes);
   const st = await stat(target);

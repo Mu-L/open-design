@@ -685,6 +685,16 @@ export async function startServer({ port = 7456 } = {}) {
   });
 
   app.post('/api/projects/:id/media/generate', async (req, res) => {
+    // Daemon binds 127.0.0.1, but a malicious local web page (DNS rebinding /
+    // loopback CSRF) can still POST here from the browser unless we vet the
+    // request's Origin / Host headers. Media generation is expensive once
+    // real providers land, so we lock the surface down to the daemon's own
+    // origin (and the CLI client, which never sends an Origin header).
+    if (!isLocalSameOrigin(req, port)) {
+      return res
+        .status(403)
+        .json({ error: 'cross-origin request rejected: media generation is restricted to the local UI / CLI' });
+    }
     try {
       const projectId = req.params.id;
       // Ensure the project exists in DB before writing files; this gives
@@ -709,7 +719,11 @@ export async function startServer({ port = 7456 } = {}) {
       });
       res.json({ file: meta });
     } catch (err) {
-      res.status(400).json({ error: String(err && err.message ? err.message : err) });
+      const status = typeof err?.status === 'number' ? err.status : 400;
+      const code = err?.code;
+      const body = { error: String(err && err.message ? err.message : err) };
+      if (code) body.code = code;
+      res.status(status).json(body);
     }
   });
 
@@ -955,6 +969,42 @@ function escapeHtml(s) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+// Vet a request that targets the daemon's own surface from the local box.
+// We accept three shapes:
+//   1. The CLI client (`od media generate`) — no Origin / no Referer; the
+//      Host header is `127.0.0.1:<port>` or `localhost:<port>`.
+//   2. The bundled UI loaded from the daemon — Origin matches one of the
+//      loopback hosts on the daemon's port.
+//   3. A vite dev server proxying to the daemon — Origin is one of the
+//      common dev ports (5173 / 5174). Same-process dev only; daemon binds
+//      to 127.0.0.1 either way.
+// Anything else is rejected so a random localhost web page can't trigger
+// expensive media generation via DNS-rebinding / loopback CSRF.
+function isLocalSameOrigin(req, port) {
+  const allowedHosts = new Set([
+    `127.0.0.1:${port}`,
+    `localhost:${port}`,
+    `[::1]:${port}`,
+  ]);
+  const allowedOrigins = new Set([
+    `http://127.0.0.1:${port}`,
+    `http://localhost:${port}`,
+    `http://[::1]:${port}`,
+    'http://127.0.0.1:5173',
+    'http://localhost:5173',
+    'http://127.0.0.1:5174',
+    'http://localhost:5174',
+  ]);
+  const host = String(req.headers.host || '');
+  if (!allowedHosts.has(host)) return false;
+  const origin = req.headers.origin;
+  if (origin) return allowedOrigins.has(String(origin));
+  // No Origin: only same-origin browsers without an Origin header (rare)
+  // or non-browser clients (CLI / curl with --no-origin) reach here. The
+  // CLI is the expected case; we already vetted the Host header above.
+  return true;
 }
 
 function sanitizeSlug(s) {

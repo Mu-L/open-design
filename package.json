@@ -15,6 +15,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
+    "verify:media-models": "node scripts/verify-media-models.mjs",
     "start": "npm run build && node daemon/cli.js"
   },
   "dependencies": {

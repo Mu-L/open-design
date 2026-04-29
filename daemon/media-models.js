@@ -1,8 +1,11 @@
 // Daemon-side mirror of src/media/models.ts. We keep this in plain JS so
 // node imports are native and the daemon never needs a TS toolchain at
-// runtime. The two files are kept in sync by review — any model added to
-// src/media/models.ts must be added here too. Tests in verify ensure the
-// arrays are non-empty and IDs are unique.
+// runtime. The two files are kept in sync by hand — any model added to
+// src/media/models.ts must be added here too. Drift is enforced by
+// `node scripts/verify-media-models.mjs` (also exposed as
+// `npm run verify:media-models`); CI should call it before publish so
+// the moment one side adds a model and the other doesn't, the build
+// fails with a precise diff.
 
 export const IMAGE_MODELS = [
   { id: 'gpt-image-2', label: 'gpt-image-2', hint: 'OpenAI · default', caps: ['t2i', 'i2i', 'inpaint'] },

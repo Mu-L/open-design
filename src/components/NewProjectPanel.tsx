@@ -181,8 +181,13 @@ export function NewProjectPanel({
 
   function handleCreate() {
     if (!canCreate) return;
-    const primaryDs = selectedDsIds[0] ?? null;
-    const inspirations = selectedDsIds.slice(1);
+    // Design-system selection only applies to the web surface — the picker
+    // is hidden for image/video/audio, so a DS the user picked while on
+    // the web surface (and may have forgotten about) must NOT silently
+    // attach to a media project and change prompt composition. Force the
+    // primary id and inspirations empty for non-web surfaces.
+    const primaryDs = surface === 'web' ? selectedDsIds[0] ?? null : null;
+    const inspirations = surface === 'web' ? selectedDsIds.slice(1) : [];
     const metadata = buildMetadata({
       surface,
       tab,
