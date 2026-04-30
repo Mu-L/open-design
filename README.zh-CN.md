@@ -562,6 +562,7 @@ Daemon 启动时从 `PATH` 自动检测，无需配置。
 
 - **加一个 skill** —— 往 [`skills/`](skills/) 丢一个文件夹，遵循 [`SKILL.md`][skill] 规范。
 - **加一套 design system** —— 往 [`design-systems/<brand>/`](design-systems/) 丢一份 `DESIGN.md`，用 9 段式 schema。
+- **加一个 prompt 模板** —— 往 [`prompt-templates/{image,video}/`](prompt-templates/) 丢一份 JSON（每个 prompt 一个文件，必须带 `source` 块给上游作者署名）。署名规范见 [`CREDITS.md`](CREDITS.md)。
 - **接入一个新的 coding-agent CLI** —— 在 [`daemon/agents.js`](daemon/agents.js) 里加一项。
 
 完整流程、合并硬线、代码风格、我们不接收的 PR 类型 → [`CONTRIBUTING.zh-CN.md`](CONTRIBUTING.zh-CN.md)（[English](CONTRIBUTING.md)）。
@@ -569,3 +570,5 @@ Daemon 启动时从 `PATH` 自动检测，无需配置。
 ## License
 
 Apache-2.0。内置的 [`skills/guizang-ppt/`](skills/guizang-ppt/) 保留它原始的 [LICENSE](skills/guizang-ppt/LICENSE)（MIT）和原作者 [op7418](https://github.com/op7418) 的归属。
+
+[`prompt-templates/`](prompt-templates/) 下精选的 **图片 / 视频 prompt 模板** 改编自 [`YouMind-OpenLab/awesome-gpt-image-2`](https://github.com/YouMind-OpenLab/awesome-gpt-image-2) 与 [`YouMind-OpenLab/awesome-seedance-2-prompts`](https://github.com/YouMind-OpenLab/awesome-seedance-2-prompts)，遵循 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) 协议。每个 JSON 文件的 `source` 块都保留了原作者、源 URL 和 license 标记，并在 gallery / 预览 UI 中展示给用户。完整署名表见 [`CREDITS.md`](CREDITS.md)。

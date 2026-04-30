@@ -23,7 +23,8 @@
     "typecheck": "tsc -b --noEmit",
     "verify:media-models": "node scripts/verify-media-models.mjs",
     "start": "npm run build && node daemon/cli.js",
-    "test:run": "vitest run"
+    "test:run": "vitest run",
+    "sync:prompt-templates": "node scripts/import-prompt-templates.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",

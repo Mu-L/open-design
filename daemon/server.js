@@ -15,6 +15,7 @@ import {
 } from './agents.js';
 import { listSkills } from './skills.js';
 import { listDesignSystems, readDesignSystem } from './design-systems.js';
+import { listPromptTemplates, readPromptTemplate } from './prompt-templates.js';
 import { attachAcpSession } from './acp.js';
 import { createClaudeStreamHandler } from './claude-stream.js';
 import { createCopilotStreamHandler } from './copilot-stream.js';
@@ -78,6 +79,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 const STATIC_DIR = path.join(PROJECT_ROOT, 'out');
 const SKILLS_DIR = path.join(PROJECT_ROOT, 'skills');
 const DESIGN_SYSTEMS_DIR = path.join(PROJECT_ROOT, 'design-systems');
+const PROMPT_TEMPLATES_DIR = path.join(PROJECT_ROOT, 'prompt-templates');
 // Absolute path to the daemon CLI entry. We inject this into the spawned
 // agent's env as OD_BIN so the agent can run `node "$OD_BIN" media generate …`
 // regardless of whether the user has `od` on PATH.
@@ -577,6 +579,35 @@ export async function startServer({ port = 7456, returnServer = false } = {}) {
       const body = await readDesignSystem(DESIGN_SYSTEMS_DIR, req.params.id);
       if (body === null) return res.status(404).json({ error: 'design system not found' });
       res.json({ id: req.params.id, body });
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  // Curated image / video prompt templates. The list payload omits the
+  // `prompt` body so the gallery payload stays small; clients request
+  // /api/prompt-templates/:surface/:id when they need the body (preview
+  // modal or new-project picker confirming a selection).
+  app.get('/api/prompt-templates', async (_req, res) => {
+    try {
+      const templates = await listPromptTemplates(PROMPT_TEMPLATES_DIR);
+      res.json({
+        promptTemplates: templates.map(({ prompt: _prompt, ...rest }) => rest),
+      });
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.get('/api/prompt-templates/:surface/:id', async (req, res) => {
+    try {
+      const tpl = await readPromptTemplate(
+        PROMPT_TEMPLATES_DIR,
+        req.params.surface,
+        req.params.id,
+      );
+      if (!tpl) return res.status(404).json({ error: 'prompt template not found' });
+      res.json({ promptTemplate: tpl });
     } catch (err) {
       res.status(500).json({ error: String(err) });
     }

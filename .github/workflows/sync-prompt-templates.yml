@@ -1,0 +1,105 @@
+name: sync-prompt-templates
+
+# Refresh the curated prompt-template gallery from the upstream
+# CC BY 4.0 corpora (YouMind-OpenLab/awesome-gpt-image-2 and
+# YouMind-OpenLab/awesome-seedance-2-prompts). Runs weekly so newly
+# featured prompts flow in automatically; the diff lands as a PR so
+# attribution and quality still get human review before merging.
+#
+# We deliberately do NOT run this in `pnpm dev:all` — see CREDITS.md
+# and the script header for why (network on every dev start, GitHub
+# anon rate limit, would dirty git diff). The JSON files under
+# prompt-templates/ are committed content, not a regenerated cache.
+
+on:
+  schedule:
+    # Mondays 03:00 UTC. Off-peak globally, lines up with the weekly
+    # rhythm of the upstream YouMind-OpenLab repos which usually
+    # batch-publish over the weekend.
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    name: Sync curated prompt templates
+    runs-on: ubuntu-latest
+    permissions:
+      # create-pull-request needs to push the branch and open the PR.
+      # Limited to this job; the rest of the workflow is read-only.
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read Node version
+        id: nvmrc
+        run: echo "version=$(cat .nvmrc)" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ steps.nvmrc.outputs.version }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          # Match the value in package.json's `packageManager` field so
+          # CI uses the same pnpm as contributors run locally.
+          run_install: false
+
+      - name: Refresh prompt templates
+        # Hits raw.githubusercontent.com (CDN, anonymous, no token
+        # needed). If we ever switch to the GitHub API for richer
+        # metadata, wire `GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}`
+        # into the env to lift the 60 req/h anon limit.
+        run: pnpm sync:prompt-templates
+
+      - name: Detect changes
+        id: diff
+        run: |
+          if [ -n "$(git status --porcelain prompt-templates/)" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open pull request
+        if: steps.diff.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          # Stable branch name so successive weekly runs update the
+          # same PR (force-push) instead of stacking new ones.
+          branch: chore/sync-prompt-templates
+          base: main
+          commit-message: 'chore: refresh curated prompt templates'
+          title: 'chore: refresh curated prompt templates'
+          body: |
+            Automated weekly refresh of `prompt-templates/{image,video}/*.json`.
+
+            Run by `.github/workflows/sync-prompt-templates.yml`, which
+            invokes `pnpm sync:prompt-templates` against the upstream
+            CC BY 4.0 corpora:
+
+            - <https://github.com/YouMind-OpenLab/awesome-gpt-image-2>
+            - <https://github.com/YouMind-OpenLab/awesome-seedance-2-prompts>
+
+            ### Reviewer checklist
+
+            - Skim the new / changed templates — do the previews still
+              look on-brand? Is anything NSFW or off-topic?
+            - Each new JSON must have a `source` block with the
+              upstream URL and CC-BY-4.0 license tag.
+            - If the upstream README structure changed (parser drift),
+              the diff will look weird — fix the parser in
+              `scripts/import-prompt-templates.mjs` rather than
+              merging garbage data.
+
+            See `CREDITS.md` for the attribution convention.
+          labels: |
+            automated
+            content
+          delete-branch: true

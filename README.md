@@ -562,6 +562,7 @@ Issues, PRs, new skills, and new design systems are all welcome. The highest-lev
 
 - **Add a skill** — drop a folder into [`skills/`](skills/) following the [`SKILL.md`][skill] convention.
 - **Add a design system** — drop a `DESIGN.md` into [`design-systems/<brand>/`](design-systems/) using the 9-section schema.
+- **Add a prompt template** — drop a JSON file into [`prompt-templates/{image,video}/`](prompt-templates/) (one prompt per file, with a `source` block crediting the upstream author). See [`CREDITS.md`](CREDITS.md) for the attribution convention.
 - **Wire up a new coding-agent CLI** — one entry in [`daemon/agents.js`](daemon/agents.js).
 
 Full walkthrough, bar-for-merging, code style, and what we don't accept → [`CONTRIBUTING.md`](CONTRIBUTING.md) ([简体中文](CONTRIBUTING.zh-CN.md)).
@@ -569,3 +570,5 @@ Full walkthrough, bar-for-merging, code style, and what we don't accept → [`CO
 ## License
 
 Apache-2.0. The bundled `skills/guizang-ppt/` retains its original [LICENSE](skills/guizang-ppt/LICENSE) (MIT) and authorship attribution to [op7418](https://github.com/op7418).
+
+The curated **image / video prompt templates** under [`prompt-templates/`](prompt-templates/) are adapted from [`YouMind-OpenLab/awesome-gpt-image-2`](https://github.com/YouMind-OpenLab/awesome-gpt-image-2) and [`YouMind-OpenLab/awesome-seedance-2-prompts`](https://github.com/YouMind-OpenLab/awesome-seedance-2-prompts) under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Per-prompt author credit, source URL, and license tag are preserved in each JSON file's `source` block and surfaced in the gallery / preview UI. Full attribution table → [`CREDITS.md`](CREDITS.md).
